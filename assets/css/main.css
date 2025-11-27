@@ -587,6 +587,52 @@ body {
   text-decoration: underline;
 }
 
+/* ===== 404 Page ===== */
+
+.section-404 {
+  background: radial-gradient(circle at right top, rgba(255, 255, 255, 0.18), transparent 55%),
+              linear-gradient(135deg, #000000, #111827 55%, #000000);
+  color: #ffffff;
+}
+
+.error-404 {
+  text-align: left;
+  max-width: 640px;
+  padding: 2.5rem 0;
+}
+
+.section-404 h1 {
+  margin-top: 0.4rem;
+  margin-bottom: 0.75rem;
+  color: #ffffff;
+}
+
+.section-404 .lead {
+  color: #e5e7eb;
+  margin-bottom: 1.75rem;
+}
+
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.error-note {
+  font-size: 0.95rem;
+  color: #e5e7eb;
+}
+
+.section-404 a {
+  color: #c4d0ff;
+}
+
+.section-404 a.btn-primary,
+.section-404 a.btn-secondary {
+  color: #ffffff;
+}
+
 /* ===== Responsive Rules ===== */
 
 @media (max-width: 768px) {
