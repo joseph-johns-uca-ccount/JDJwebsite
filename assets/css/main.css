@@ -528,6 +528,8 @@ body {
 
 /* ===== Data Viz Grid ===== */
 
+/* ===== Data Viz Grid ===== */
+
 .viz-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -535,50 +537,49 @@ body {
   margin: 1.75rem 0 1rem;
 }
 
-/*.viz-card {
+/* Cards always stretch to same height in their column */
+.viz-card {
   background-color: var(--color-surface);
   border-radius: var(--radius-md);
   padding: 1.1rem 1.2rem;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
-.viz-thumb {
-  border-radius: 12px;
-  border: 1px dashed var(--color-border);
-  min-height: 130px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 0.8rem;
-  font-size: 0.9rem;
-  color: var(--color-muted);
-}*/
-
-/* Make viz cards clickable and images scale nicely */
+/* Make the whole card clickable without messing layout */
 .viz-card a {
   text-decoration: none;
   color: inherit;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
+/* Thumbnail area with fixed aspect ratio */
 .viz-thumb {
   border-radius: 12px;
-  border: 1px dashed var(--color-border);
-  min-height: 130px;
+  border: 1px solid var(--color-border);
+  margin-bottom: 0.8rem;
+  overflow: hidden;
+
+  /* keeps all three icons visually consistent */
+  aspect-ratio: 4 / 3;  /* you can change to 16/9 if you prefer */
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 0.8rem;
-  font-size: 0.9rem;
-  color: var(--color-muted);
-  overflow: hidden;
+  background-color: #0b1120;
 }
 
+/* Icon scaling so nothing stretches weirdly */
 .viz-thumb img {
-  max-width: 100%;
-  height: auto;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;  /* or 'cover' if you want edge-to-edge crop */
   display: block;
 }
+
 
 
 /* ===== Contact Call-to-Action ===== */
