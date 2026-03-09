@@ -1,0 +1,74 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>BLS CPI Change by Division (2021–Present)</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#ffffff;}
+#map { width:100vw; height:100vh;}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script>
+
+const divisionValues = {
+"New England": 21.44,
+"Middle Atlantic": 22.89,
+"East North Central": 24.40,
+"West North Central": 24.22,
+"South Atlantic": 25.24,
+"East South Central": 25.54,
+"West South Central": 23.30,
+"Mountain": 25.64,
+"Pacific": 24.19
+};
+
+const stateDivision = {
+"CT":"New England","ME":"New England","MA":"New England","NH":"New England","RI":"New England","VT":"New England",
+"NJ":"Middle Atlantic","NY":"Middle Atlantic","PA":"Middle Atlantic",
+"IL":"East North Central","IN":"East North Central","MI":"East North Central","OH":"East North Central","WI":"East North Central",
+"IA":"West North Central","KS":"West North Central","MN":"West North Central","MO":"West North Central","NE":"West North Central","ND":"West North Central","SD":"West North Central",
+"DE":"South Atlantic","FL":"South Atlantic","GA":"South Atlantic","MD":"South Atlantic","NC":"South Atlantic","SC":"South Atlantic","VA":"South Atlantic","WV":"South Atlantic","DC":"South Atlantic",
+"AL":"East South Central","KY":"East South Central","MS":"East South Central","TN":"East South Central",
+"AR":"West South Central","LA":"West South Central","OK":"West South Central","TX":"West South Central",
+"AZ":"Mountain","CO":"Mountain","ID":"Mountain","MT":"Mountain","NV":"Mountain","NM":"Mountain","UT":"Mountain","WY":"Mountain",
+"AK":"Pacific","CA":"Pacific","HI":"Pacific","OR":"Pacific","WA":"Pacific"
+};
+
+const states = Object.keys(stateDivision);
+const values = states.map(s => divisionValues[stateDivision[s]]);
+const divisions = states.map(s => stateDivision[s]);
+
+fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
+.then(response => response.json())
+.then(geojson => {
+
+const trace = {
+type: "choropleth",
+locationmode: "USA-states",
+locations: states,
+z: values,
+text: divisions,
+colorscale: "RdYlBu",
+reversescale: true,
+marker: { line: {color: "black", width: 2} },
+colorbar: { title: "CPI % Change<br>2021–Present" }
+};
+
+const layout = {
+geo: { scope: "usa", projection: {type: "albers usa"}, showlakes: false },
+margin: {l:0,r:0,t:0,b:0}
+};
+
+Plotly.newPlot("map",[trace],layout);
+
+});
+
+</script>
+</body>
+</html>
