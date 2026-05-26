@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Healthcare Provider Finder | JDJ Insight Partners</title>
+    
+    <!-- Leaflet CSS for map -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+    
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f4f8;
+            color: #2d3748;
+        }
+
+        /* ── HEADER ── */
+        .header {
+            background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%);
+            color: white;
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.85;
+            margin-top: 4px;
+        }
+
+        .header-logo {
+            font-size: 2.5rem;
+        }
+
+        /* ── MAIN LAYOUT ── */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 90px);
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            width: 340px;
+            min-width: 340px;
+            background: white;
+            padding: 24px;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.08);
+            z-index: 10;
+        }
+
+        .sidebar h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1a365d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .section-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin: 16px 0 8px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 4px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #2d3748;
+            background: #f7fafc;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #2b6cb0;
+            background: white;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .divider {
+            height: 1px;
+            background: #e2e8f0;
+            margin: 16px 0;
+        }
+
+        .search-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #1a365d, #2b6cb0);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            margin-top: 8px;
+        }
+
+        .search-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .search-btn:active {
+            transform: translateY(0);
+        }
+
+        .search-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ── RESULTS COUNT ── */
+        .results-badge {
+            display: none;
+            background: #ebf8ff;
+            border: 1px solid #bee3f8;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: #2c5282;
+            font-weight: 500;
+        }
+
+        .results-badge.visible {
+            display: block;
+        }
+
+        .error-badge {
+            display: none;
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: #c53030;
+            font-weight: 500;
+        }
+
+        .error-badge.visible {
+            display: block;
+        }
+
+        /* ── LOADING SPINNER ── */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .loading.visible {
+            display: block;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #2b6cb0;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ── RIGHT PANEL ── */
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── MAP ── */
+        #map {
+            flex: 1;
+            min-height: 400px;
+        }
+
+        /* ── TABLE PANEL ── */
+        .table-panel {
+            height: 280px;
+            background: white;
+            border-top: 2px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .table-header {
+            padding: 10px 16px;
+            background: #f7fafc;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .table-header h3 {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #1a365d;
+        }
+
+        .table-hint {
+            font-size: 0.75rem;
+            color: #718096;
+        }
+
+        .table-wrapper {
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            background: #edf2f7;
+            z-index: 5;
+        }
+
+        thead th {
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 700;
+            color: #4a5568;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #f0f4f8;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        tbody tr:hover {
+            background: #ebf8ff;
+        }
+
+        tbody tr.selected {
+            background: #bee3f8;
+            font-weight: 600;
+        }
+
+        tbody td {
+            padding: 7px 12px;
+            color: #2d3748;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .empty-table {
+            text-align: center;
+            padding: 40px;
+            color: #a0aec0;
+            font-size: 0.9rem;
+        }
+
+        /* ── DOWNLOAD BUTTON ── */
+        .download-btn {
+            display: none;
+            padding: 6px 14px;
+            background: #276749;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .download-btn:hover {
+            opacity: 0.85;
+        }
+
+        .download-btn.visible {
+            display: block;
+        }
+
+        /* ── LEAFLET POPUP ── */
+        .leaflet-popup-content {
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+            min-width: 240px;
+        }
+
+        .popup-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: #1a365d;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .popup-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+
+        .popup-label {
+            font-weight: 600;
+            color: #718096;
+            min-width: 80px;
+        }
+
+        .popup-value {
+            color: #2d3748;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<div class="header">
+    <div>
+        <h1>🏥 Healthcare Provider Finder</h1>
+        <p>Find Medicare & Medicaid enrolled providers near any U.S. address</p>
+    </div>
+    <div class="header-logo">🗺️</div>
+</div>
+
+<!-- ── MAIN LAYOUT ── -->
+<div class="main-container">
+
+    <!-- ── SIDEBAR ── -->
+    <div class="sidebar">
+        <h2>🔍 Search</h2>
+
+        <div class="section-label">Your Address</div>
+
+        <div class="form-group">
+            <label>Address 1 *</label>
+            <input type="text" id="address1" placeholder="e.g. 123 Main Street">
+        </div>
+
+        <div class="form-group">
+            <label>Address 2 (optional)</label>
+            <input type="text" id="address2" placeholder="e.g. Apt 4B">
+        </div>
+
+        <div class="form-group">
+            <label>City / Town *</label>
+            <input type="text" id="city" placeholder="e.g. Indianapolis">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>State *</label>
+                <select id="state">
+                    <option value="">-- Select --</option>
+                    <option>AL</option><option>AK</option><option>AZ</option>
+                    <option>AR</option><option>CA</option><option>CO</option>
+                    <option>CT</option><option>DE</option><option>FL</option>
+                    <option>GA</option><option>HI</option><option>ID</option>
+                    <option>IL</option><option>IN</option><option>IA</option>
+                    <option>KS</option><option>KY</option><option>LA</option>
+                    <option>ME</option><option>MD</option><option>MA</option>
+                    <option>MI</option><option>MN</option><option>MS</option>
+                    <option>MO</option><option>MT</option><option>NE</option>
+                    <option>NV</option><option>NH</option><option>NJ</option>
+                    <option>NM</option><option>NY</option><option>NC</option>
+                    <option>ND</option><option>OH</option><option>OK</option>
+                    <option>OR</option><option>PA</option><option>RI</option>
+                    <option>SC</option><option>SD</option><option>TN</option>
+                    <option>TX</option><option>UT</option><option>VT</option>
+                    <option>VA</option><option>WA</option><option>WV</option>
+                    <option>WI</option><option>WY</option><option>DC</option>
+                    <option>PR</option><option>VI</option><option>GU</option>
+                    <option>AS</option><option>MP</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>ZIP Code *</label>
+                <input type="text" id="zipcode" placeholder="e.g. 46201" maxlength="10">
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section-label">Search Parameters</div>
+
+        <div class="form-group">
+            <label>Search Radius</label>
+            <select id="radius">
+                <option value="1">1 mile</option>
+                <option value="5">5 miles</option>
+                <option value="10" selected>10 miles</option>
+                <option value="25">25 miles</option>
+                <option value="50">50 miles</option>
+                <option value="100">100 miles</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Specialty Grouping</label>
+            <select id="grouping">
+                <option value="">All Groupings</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Specialty</label>
+            <select id="specialty">
+                <option value="">All Specialties</option>
+            </select>
+        </div>
+
+        <button class="search-btn" id="searchBtn" onclick="handleSearch()">
+            🔍 Search Providers
+        </button>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            Searching for providers...
+        </div>
+
+        <div class="results-badge" id="resultsBadge"></div>
+        <div class="error-badge" id="errorBadge"></div>
+
+        <button class="download-btn" id="downloadBtn" onclick="downloadCSV()">
+            ⬇️ Download Results as CSV
+        </button>
+    </div>
+
+    <!-- ── RIGHT PANEL ── -->
+    <div class="right-panel">
+
+        <!-- MAP -->
+        <div id="map"></div>
+
+        <!-- TABLE -->
+        <div class="table-panel">
+            <div class="table-header">
+                <h3>📋 Provider List</h3>
+                <span class="table-hint">Click a row to highlight on map</span>
+            </div>
+            <div class="table-wrapper">
+                <table id="providerTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Provider Name</th>
+                            <th>Address</th>
+                            <th>Phone</th>
+                            <th>Specialty</th>
+                            <th>Grouping</th>
+                            <th>Distance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="7" class="empty-table">
+                                Enter your address and click Search to find providers
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+const GITHUB_BASE_URL = "https://raw.githubusercontent.com/joseph-johns-uca-ccount/JDJwebsite/main/data/";
+const GOOGLE_API_KEY  = "AIzaSyCre_l9kZKKlQO7uyvBgyQ67aW29_SsP4E";
+
+// ============================================================
+// GLOBAL STATE
+// ============================================================
+
+let map           = null;
+let markers       = [];
+let allProviders  = [];
+let filteredProviders = [];
+let userMarker    = null;
+let radiusCircle  = null;
+let selectedRow   = null;
+let selectedMarker = null;
+
+// ============================================================
+// INITIALIZE MAP
+// ============================================================
+
+function initMap() {
+    map = L.map('map').setView([39.5, -98.35], 4);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        maxZoom: 19
+    }).addTo(map);
+}
+
+initMap();
+
+// ============================================================
+// GEOCODE ADDRESS USING GOOGLE MAPS
+// ============================================================
+
+async function geocodeAddress(address) {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_API_KEY}`;
+    const response = await fetch(url);
+    const data     = await response.json();
+    if (data.status === 'OK') {
+        const loc = data.results[0].geometry.location;
+        return { lat: loc.lat, lng: loc.lng };
+    }
+    return null;
+}
+
+// ============================================================
+// LOAD STATE CSV FROM GITHUB
+// ============================================================
+
+async function loadStateData(state) {
+    const url = `${GITHUB_BASE_URL}providers_${state}.csv`;
+    return new Promise((resolve, reject) => {
+        Papa.parse(url, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => resolve(results.data),
+            error: (err) => reject(err)
+        });
+    });
+}
+
+// ============================================================
+// HAVERSINE DISTANCE
+// ============================================================
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R    = 3958.8;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a    = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                 Math.sin(dLon/2) * Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ============================================================
+// FILTER BY RADIUS
+// ============================================================
+
+function filterByRadius(providers, userLat, userLng, radiusMiles) {
+    return providers
+        .map(p => {
+            const lat  = parseFloat(p.Latitude);
+            const lng  = parseFloat(p.Longitude);
+            if (isNaN(lat) || isNaN(lng)) return null;
+            const dist = haversineDistance(userLat, userLng, lat, lng);
+            if (dist <= radiusMiles) {
+                return { ...p, Distance_Miles: dist.toFixed(1) };
+            }
+            return null;
+        })
+        .filter(p => p !== null)
+        .sort((a, b) => parseFloat(a.Distance_Miles) - parseFloat(b.Distance_Miles));
+}
+
+// ============================================================
+// POPULATE SPECIALTY FILTERS
+// ============================================================
+
+function populateFilters(providers) {
+    const groupings   = [...new Set(providers.map(p => p.Specialty_Grouping).filter(Boolean))].sort();
+    const specialties = [...new Set(providers.map(p => p.Specialty).filter(Boolean))].sort();
+
+    const groupingSelect   = document.getElementById('grouping');
+    const specialtySelect  = document.getElementById('specialty');
+
+    groupingSelect.innerHTML  = '<option value="">All Groupings</option>';
+    specialtySelect.innerHTML = '<option value="">All Specialties</option>';
+
+    groupings.forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g;
+        opt.textContent = g;
+        groupingSelect.appendChild(opt);
+    });
+
+    specialties.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        specialtySelect.appendChild(opt);
+    });
+}
+
+// ============================================================
+// CLEAR MAP
+// ============================================================
+
+function clearMap() {
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    if (userMarker)   { map.removeLayer(userMarker);  userMarker  = null; }
+    if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+    selectedMarker = null;
+    selectedRow    = null;
+}
+
+// ============================================================
+// CREATE MARKER ICONS
+// ============================================================
+
+function createIcon(color) {
+    return L.divIcon({
+        className: '',
+        html: `<div style="
+            width: 12px;
+            height: 12px;
+            background: ${color};
+            border: 2px solid white;
+            border-radius: 50%;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        "></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+    });
+}
+
+const blueIcon   = createIcon('#3182ce');
+const orangeIcon = createIcon('#dd6b20');
+
+// ============================================================
+// BUILD POPUP HTML
+// ============================================================
+
+function buildPopup(p) {
+    return `
+    <div class="popup-title">🏥 ${p['Provider Name'] || 'Unknown'}</div>
+    <div class="popup-row">
+        <span class="popup-label">📍 Address</span>
+        <span class="popup-value">${p['Full Address'] || 'N/A'}</span>
+    </div>
+    <div class="popup-row">
+        <span class="popup-label">📞 Phone</span>
+        <span class="popup-value">${p['Phone'] || 'N/A'}</span>
+    </div>
+    <div class="popup-row">
+        <span class="popup-label">🩺 Specialty</span>
+        <span class="popup-value">${p['Specialty'] || 'N/A'}</span>
+    </div>
+    <div class="popup-row">
+        <span class="popup-label">🏢 Grouping</span>
+        <span class="popup-value">${p['Specialty_Grouping'] || 'N/A'}</span>
+    </div>
+    <div class="popup-row">
+        <span class="popup-label">📏 Distance</span>
+        <span class="popup-value">${p.Distance_Miles} miles</span>
+    </div>
+    <div class="popup-row">
+        <span class="popup-label">🆔 NPI</span>
+        <span class="popup-value">${p['NPI'] || 'N/A'}</span>
+    </div>`;
+}
+
+// ============================================================
+// RENDER MARKERS
+// ============================================================
+
+function renderMarkers(providers) {
+    providers.slice(0, 5000).forEach((p, idx) => {
+        const lat = parseFloat(p.Latitude);
+        const lng = parseFloat(p.Longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        const marker = L.marker([lat, lng], { icon: blueIcon })
+            .bindPopup(buildPopup(p), { maxWidth: 300 })
+            .addTo(map);
+
+        marker.providerIndex = idx;
+
+        marker.on('click', () => {
+            highlightRow(idx);
+        });
+
+        markers.push(marker);
+    });
+}
+
+// ============================================================
+// RENDER TABLE
+// ============================================================
+
+function renderTable(providers) {
+    const tbody = document.getElementById('tableBody');
+
+    if (providers.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-table">No providers found. Try expanding your search radius.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = providers.slice(0, 5000).map((p, idx) => `
+        <tr id="row-${idx}" onclick="handleRowClick(${idx})">
+            <td>${idx + 1}</td>
+            <td title="${p['Provider Name'] || ''}">${p['Provider Name'] || 'N/A'}</td>
+            <td title="${p['Full Address'] || ''}">${p['Full Address'] || 'N/A'}</td>
+            <td>${p['Phone'] || 'N/A'}</td>
+            <td title="${p['Specialty'] || ''}">${p['Specialty'] || 'N/A'}</td>
+            <td title="${p['Specialty_Grouping'] || ''}">${p['Specialty_Grouping'] || 'N/A'}</td>
+            <td>${p.Distance_Miles} mi</td>
+        </tr>
+    `).join('');
+}
+
+// ============================================================
+// HANDLE ROW CLICK — highlight pin on map
+// ============================================================
+
+function handleRowClick(idx) {
+    // Deselect previous row
+    if (selectedRow !== null) {
+        const prevRow = document.getElementById(`row-${selectedRow}`);
+        if (prevRow) prevRow.classList.remove('selected');
+    }
+
+    // Reset previous marker
+    if (selectedMarker !== null) {
+        markers[selectedMarker].setIcon(blueIcon);
+        map.closePopup();
+    }
+
+    // Select new row
+    const row = document.getElementById(`row-${idx}`);
+    if (row) {
+        row.classList.add('selected');
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // Highlight marker and open popup
+    if (markers[idx]) {
+        markers[idx].setIcon(orangeIcon);
+        map.setView(markers[idx].getLatLng(), 15, { animate: true });
+        markers[idx].openPopup();
+        selectedMarker = idx;
+    }
+
+    selectedRow = idx;
+}
+
+// ============================================================
+// HIGHLIGHT ROW FROM MAP CLICK
+// ============================================================
+
+function highlightRow(idx) {
+    if (selectedRow !== null) {
+        const prevRow = document.getElementById(`row-${selectedRow}`);
+        if (prevRow) prevRow.classList.remove('selected');
+        if (selectedMarker !== null) markers[selectedMarker].setIcon(blueIcon);
+    }
+
+    const row = document.getElementById(`row-${idx}`);
+    if (row) {
+        row.classList.add('selected');
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    if (markers[idx]) markers[idx].setIcon(orangeIcon);
+
+    selectedRow    = idx;
+    selectedMarker = idx;
+}
+
+// ============================================================
+// APPLY FILTERS
+// ============================================================
+
+function applyFilters() {
+    const grouping  = document.getElementById('grouping').value;
+    const specialty = document.getElementById('specialty').value;
+
+    let filtered = [...filteredProviders];
+
+    if (grouping)  filtered = filtered.filter(p => p.Specialty_Grouping === grouping);
+    if (specialty) filtered = filtered.filter(p => p.Specialty === specialty);
+
+    clearMap();
+    renderMarkers(filtered);
+    renderTable(filtered);
+
+    document.getElementById('resultsBadge').textContent =
+        `✅ Found ${filtered.length.toLocaleString()} providers`;
+
+    return filtered;
+}
+
+// ============================================================
+// MAIN SEARCH HANDLER
+// ============================================================
+
+async function handleSearch() {
+    const address1 = document.getElementById('address1').value.trim();
+    const address2 = document.getElementById('address2').value.trim();
+    const city     = document.getElementById('city').value.trim();
+    const state    = document.getElementById('state').value.trim();
+    const zipcode  = document.getElementById('zipcode').value.trim();
+    const radius   = parseFloat(document.getElementById('radius').value);
+
+    // Validate
+    const missing = [];
+    if (!address1) missing.push('Address 1');
+    if (!city)     missing.push('City/Town');
+    if (!state)    missing.push('State');
+    if (!zipcode)  missing.push('ZIP Code');
+
+    const errorBadge   = document.getElementById('errorBadge');
+    const resultsBadge = document.getElementById('resultsBadge');
+    const loading      = document.getElementById('loading');
+    const searchBtn    = document.getElementById('searchBtn');
+    const downloadBtn  = document.getElementById('downloadBtn');
+
+    if (missing.length > 0) {
+        errorBadge.textContent = `❌ Please fill in: ${missing.join(', ')}`;
+        errorBadge.classList.add('visible');
+        resultsBadge.classList.remove('visible');
+        return;
+    }
+
+    errorBadge.classList.remove('visible');
+    resultsBadge.classList.remove('visible');
+    downloadBtn.classList.remove('visible');
+    loading.classList.add('visible');
+    searchBtn.disabled = true;
+
+    try {
+        // Build full address
+        const parts = [address1];
+        if (address2) parts.push(address2);
+        parts.push(city, state, zipcode);
+        const fullAddress = parts.join(', ');
+
+        // Geocode
+        const coords = await geocodeAddress(fullAddress);
+        if (!coords) {
+            throw new Error('Address not found. Please check your address and try again.');
+        }
+
+        // Load state data
+        const stateData = await loadStateData(state);
+        allProviders = stateData;
+
+        // Populate filters
+        populateFilters(stateData);
+
+        // Filter by radius
+        filteredProviders = filterByRadius(stateData, coords.lat, coords.lng, radius);
+
+        // Clear map and render
+        clearMap();
+
+        // Add user marker
+        userMarker = L.marker([coords.lat, coords.lng], {
+            icon: L.divIcon({
+                className: '',
+                html: `<div style="
+                    width: 18px;
+                    height: 18px;
+                    background: #e53e3e;
+                    border: 3px solid white;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+                "></div>`,
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            })
+        })
+        .bindPopup('📍 Your Location')
+        .addTo(map);
+
+        // Add radius circle
+        radiusCircle = L.circle([coords.lat, coords.lng], {
+            radius: radius * 1609.34,
+            color: '#3182ce',
+            fillColor: '#3182ce',
+            fillOpacity: 0.05,
+            weight: 1.5
+        }).addTo(map);
+
+        // Fit map to circle
+        map.fitBounds(radiusCircle.getBounds(), { padding: [20, 20] });
+
+        // Render markers and table
+        renderMarkers(filteredProviders);
+        renderTable(filteredProviders);
+
+        // Show results
+        resultsBadge.textContent = `✅ Found ${filteredProviders.length.toLocaleString()} providers within ${radius} miles of ${fullAddress}`;
+        resultsBadge.classList.add('visible');
+
+        if (filteredProviders.length > 0) {
+            downloadBtn.classList.add('visible');
+        }
+
+        if (filteredProviders.length > 5000) {
+            resultsBadge.textContent += ` (showing first 5,000)`;
+        }
+
+    } catch (err) {
+        errorBadge.textContent = `❌ ${err.message}`;
+        errorBadge.classList.add('visible');
+    } finally {
+        loading.classList.remove('visible');
+        searchBtn.disabled = false;
+    }
+}
+
+// ============================================================
+// DOWNLOAD CSV
+// ============================================================
+
+function downloadCSV() {
+    const grouping  = document.getElementById('grouping').value;
+    const specialty = document.getElementById('specialty').value;
+
+    let data = [...filteredProviders];
+    if (grouping)  data = data.filter(p => p.Specialty_Grouping === grouping);
+    if (specialty) data = data.filter(p => p.Specialty === specialty);
+
+    const cols = ['NPI', 'Provider Name', 'Full Address', 'Phone',
+                  'Specialty', 'Specialty_Classification', 'Specialty_Grouping',
+                  'Latitude', 'Longitude', 'Distance_Miles'];
+
+    const csv = [
+        cols.join(','),
+        ...data.map(p => cols.map(c => `"${(p[c] || '').replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `providers_${document.getElementById('state').value}_${document.getElementById('zipcode').value}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// ALLOW ENTER KEY TO TRIGGER SEARCH
+// ============================================================
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSearch();
+});
+</script>
+</body>
+</html>
