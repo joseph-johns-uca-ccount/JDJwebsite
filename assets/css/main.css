@@ -452,7 +452,7 @@ body {
 }
 
 .pub-list a {
-  color: var(--color-primary);
+  color: inherit;
   text-decoration: underline;
 }
 
