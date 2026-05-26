@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>Montana Property Tax Burden Estimator — Based on 2026 GEC Report</title>
+<style>
+  :root { --bg:#0f172a; --card:#111827; --muted:#9ca3af; --text:#e5e7eb; --accent:#22c55e; --warn:#f59e0b; }
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1100px;margin:32px auto;padding:0 16px;}
+  .card{background:linear-gradient(180deg,#0b1220,#0b1220 60%,#0b1220);border:1px solid #1f2937;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.25);margin-bottom:20px}
+  h1{font-size:clamp(20px,3.2vw,28px);margin:0 0 8px 0}
+  h2{font-size:clamp(18px,2.6vw,22px);margin:0 0 8px 0}
+  p.sub{color:var(--muted);margin-top:0}
+  .grid{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:1000px){.grid{grid-template-columns:1.3fr 1fr}}
+  label{display:block;font-weight:600;margin-bottom:6px}
+  select,input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid #334155;background:#0b1220;color:var(--text);outline:none}
+  input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-inner-spin-button{display:none}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#052e16;border:none;border-radius:12px;padding:12px 16px;font-weight:700;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .muted{color:var(--muted)}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{text-align:right;padding:10px;border-bottom:1px dashed #263244}
+  th:first-child,td:first-child{text-align:left}
+  .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#0b1324;border:1px solid #1f2a3a;color:#9dd8ff;font-size:12px}
+  .flex{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  .kpi .box{background:#0b1324;border:1px solid #1f2937;border-radius:12px;padding:12px}
+  .small{font-size:12px}
+  .footer{margin-top:18px;color:var(--muted);font-size:12px}
+  .warn{color:#fde68a}
+  .section-title{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .slider-row{display:grid;grid-template-columns:1fr 140px;gap:10px;align-items:center}
+  input[type=range]{width:100%}
+  .note{font-size:12px;color:#9dd8ff;margin-top:6px}
+</style>
+<script>
+  const usageLogs = []; // for export and aggregate totals
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // Montana statewide assumptions (statewide average)
+    const MILLS_2024 = 500;          // total mills (composite statewide average), 2024
+    const ASSESSMENT_RATE = 0.0135;    // 1.35% residential homestead assessment rate (taxable value share)
+    const BUSINESS_EFFECTIVE_TAX_RATE = 0.0107; // Report benchmark: $3,212 annual tax on a $300,000 small business property
+
+    // ---------- Utility formatters ----------
+    const fmt = (n, digits=2) => {
+      if (n === null || n === undefined || isNaN(n)) return "N/A";
+      return Number(n).toLocaleString(undefined, {minimumFractionDigits: digits, maximumFractionDigits: digits});
+    };
+    const usd = n => (n === null || n === undefined || isNaN(n) ? "N/A" : `$${fmt(n,2)}`);
+    const pct = (n, digits=3) => (n === null || n === undefined || isNaN(n) ? "N/A" : `${fmt(n, digits)}%`);
+
+    // ---------- DOM refs ----------
+    const millsInput = document.getElementById('mills');
+    const bMillsInput = document.getElementById('bmills');
+    const kpiMills = document.getElementById('kpi_mills');
+    const kpiAssessment = document.getElementById('kpi_assessment');
+    const resBody = document.getElementById('results_body');
+
+    // Initialize displayed mills
+    if (millsInput) millsInput.value = MILLS_2024.toFixed(1);
+    if (bMillsInput) bMillsInput.value = MILLS_2024.toFixed(1);
+    if (kpiMills) kpiMills.textContent = MILLS_2024.toFixed(1);
+    if (kpiAssessment) kpiAssessment.textContent = (ASSESSMENT_RATE*100).toFixed(2) + '%';
+
+    // Helper: Montana two-step tax
+    function montanaTax(marketValue){
+      const mv = Number(marketValue) || 0;
+      const taxableValue = mv * ASSESSMENT_RATE;
+      const tax = taxableValue * (MILLS_2024 / 1000);
+      return { marketValue: mv, taxableValue, tax };
+    }
+
+    // Scenario sales tax rates (informational, from the report’s reform framework)
+    const SALES_TAX = {
+      current: { label: "Current Law", static: null, dynamic: null },
+      max:     { label: "Maximum Implementation", static: 6.64, dynamic: 6.57 },
+      partial: { label: "Partial Implementation", static: 5.30, dynamic: 5.24 }
+    };
+
+    // ---------- Homeowner calc ----------
+    const calcBtn = document.getElementById('calcBtn');
+    if (calcBtn){
+      calcBtn.addEventListener('click', () => {
+        const marketValue = parseFloat(document.getElementById('assessed').value) || 0;
+        const scenario = document.getElementById('scenario').value;
+
+        const cur = montanaTax(marketValue);
+        const currentTax = cur.tax;
+
+        // Under the report’s reform framework:
+        // - Maximum: eliminates state, city, county, and K-12 property taxes (homeowners + businesses)
+        // - Partial: eliminates residential homestead property taxes (homeowners), but retains business/rental property taxes
+        const netMax = 0;
+        const netPartial = 0; // homeowner (homestead) relief in partial implementation
+
+        const savingsMax = Math.max(0, currentTax - netMax);
+        const savingsPartial = Math.max(0, currentTax - netPartial);
+
+        // KPIs
+        document.getElementById('kpi_current').textContent = usd(currentTax);
+        document.getElementById('kpi_rate').textContent = marketValue > 0 ? pct((currentTax/marketValue)*100, 3) : '0.000%';
+        document.getElementById('kpi_mills').textContent = MILLS_2024.toFixed(1);
+        document.getElementById('kpi_taxable').textContent = usd(cur.taxableValue);
+
+        // Scenario table
+        document.getElementById('cur').textContent = usd(currentTax);
+        document.getElementById('net_max').textContent = usd(netMax);
+        document.getElementById('sav_max').textContent = usd(savingsMax);
+        document.getElementById('net_partial').textContent = usd(netPartial);
+        document.getElementById('sav_partial').textContent = usd(savingsPartial);
+
+        // Sales tax info
+        const info = SALES_TAX[scenario] || SALES_TAX.current;
+        document.getElementById('sales_static').textContent = info.static==null ? 'N/A' : pct(info.static, 2);
+        document.getElementById('sales_dynamic').textContent = info.dynamic==null ? 'N/A' : pct(info.dynamic, 2);
+
+        // Append to consolidated results table
+        appendResultRow({
+          property_type: 'Homeowner (Homestead)',
+          geography: 'Montana (Statewide Average)',
+          market_value: marketValue,
+          current_tax: currentTax,
+          net_max: netMax,
+          net_partial: netPartial
+        });
+
+        usageLogs.push({
+          property_type: 'Homeowner (Homestead)',
+          geography: 'Montana (Statewide Average)',
+          market_value: marketValue,
+          current_tax: currentTax,
+          net_max: netMax,
+          net_partial: netPartial
+        });
+        updateTotals();
+      });
+    }
+
+    // ---------- Business calc ----------
+    const calcBizBtn = document.getElementById('calcBizBtn');
+    if (calcBizBtn){
+      calcBizBtn.addEventListener('click', () => {
+        const marketValue = parseFloat(document.getElementById('bvalue').value) || 0;
+        const scenario = document.getElementById('bscenario').value;
+
+        const currentTax = marketValue * BUSINESS_EFFECTIVE_TAX_RATE;
+
+        // Under the report’s reform framework:
+        // - Maximum: eliminates state, city, county, and K-12 property taxes for homeowners and businesses
+        // - Partial: retains business/industrial property taxes (i.e., no relief for business property taxes)
+        const netMax = 0;
+        const netPartial = currentTax;
+
+        const savingsMax = Math.max(0, currentTax - netMax);
+        const savingsPartial = Math.max(0, currentTax - netPartial);
+
+        document.getElementById('b_cur').textContent = usd(currentTax);
+        document.getElementById('b_net_max').textContent = usd(netMax);
+        document.getElementById('b_sav_max').textContent = usd(savingsMax);
+        document.getElementById('b_net_partial').textContent = usd(netPartial);
+        document.getElementById('b_sav_partial').textContent = usd(savingsPartial);
+        document.getElementById('b_effective_rate').textContent = pct(BUSINESS_EFFECTIVE_TAX_RATE * 100, 2);
+
+        const info = SALES_TAX[scenario] || SALES_TAX.current;
+        document.getElementById('b_sales_static').textContent = info.static==null ? 'N/A' : pct(info.static, 2);
+        document.getElementById('b_sales_dynamic').textContent = info.dynamic==null ? 'N/A' : pct(info.dynamic, 2);
+
+        appendResultRow({
+          property_type: 'Business Property',
+          geography: 'Montana (Statewide Average)',
+          market_value: marketValue,
+          current_tax: currentTax,
+          net_max: netMax,
+          net_partial: netPartial
+        });
+
+        usageLogs.push({
+          property_type: 'Business Property',
+          geography: 'Montana (Statewide Average)',
+          market_value: marketValue,
+          current_tax: currentTax,
+          net_max: netMax,
+          net_partial: netPartial
+        });
+        updateTotals();
+      });
+    }
+
+    // ---------- Renter calc ----------
+    const calcRenterBtn = document.getElementById('calcRenterBtn');
+    const passRateInput = document.getElementById('passRate');
+    if (passRateInput) {
+      passRateInput.addEventListener('input', () => {
+        document.getElementById('passLabel').textContent = passRateInput.value + '%';
+      });
+    }
+    if (calcRenterBtn){
+      calcRenterBtn.addEventListener('click', () => {
+        const annualRent = parseFloat(document.getElementById('annualRent').value) || 0;
+        const scenario = document.getElementById('rscenario').value;
+        const passRate = parseFloat(document.getElementById('passRate').value) / 100;
+        const embeddedPropertyTaxShare = 0.20;
+        const embeddedTaxBurden = annualRent * embeddedPropertyTaxShare;
+        const estimatedPassThrough = embeddedTaxBurden * passRate;
+
+        const currentTax = estimatedPassThrough;
+        const netMax = 0;
+        const netPartial = currentTax;
+        const savingsMax = Math.max(0, currentTax - netMax);
+        const savingsPartial = Math.max(0, currentTax - netPartial);
+        const selectedSavings = scenario === 'max' ? savingsMax : 0;
+
+        document.getElementById('r_embedded_share').textContent = pct(embeddedPropertyTaxShare * 100, 0);
+        document.getElementById('r_pass_rate').textContent = pct(passRate * 100, 0);
+        document.getElementById('r_current').textContent = usd(currentTax);
+        document.getElementById('r_sav_max').textContent = usd(savingsMax);
+        document.getElementById('r_sav_partial').textContent = usd(savingsPartial);
+        document.getElementById('renterSavings').textContent = usd(selectedSavings);
+        document.getElementById('r_scenario_note').textContent = scenario === 'max'
+          ? 'Maximum Implementation: modeled rental property tax pass-through is eliminated.'
+          : 'Partial Implementation: rental/business property taxes remain, so modeled renter savings are $0.';
+
+        appendResultRow({
+          property_type: 'Renter',
+          geography: 'Montana (Statewide Average)',
+          market_value: annualRent,
+          current_tax: currentTax,
+          net_max: netMax,
+          net_partial: netPartial
+        });
+
+        usageLogs.push({
+          property_type: 'Renter',
+          geography: 'Montana (Statewide Average)',
+          market_value: annualRent,
+          current_tax: currentTax,
+          net_max: netMax,
+          net_partial: netPartial
+        });
+        updateTotals();
+      });
+    }
+
+    // ---------- Append row helper ----------
+    function appendResultRow(r){
+      const tr = document.createElement('tr');
+      const cells = [
+        r.property_type,
+        r.geography,
+        usd(r.market_value),
+        usd(r.current_tax),
+        usd(r.net_max),
+        usd(r.net_partial)
+      ];
+      cells.forEach((txt, i) => {
+        const td = document.createElement('td');
+        td.textContent = txt;
+        if(i<=1) td.style.textAlign = 'left';
+        tr.appendChild(td);
+      });
+      resBody.appendChild(tr);
+    }
+
+    // ---------- Totals & export ----------
+    function updateTotals(){
+      const count = usageLogs.length;
+      let totalCurrent = 0;
+      let totalNetMax = 0;
+      let totalNetPartial = 0;
+
+      usageLogs.forEach(log => {
+        totalCurrent += (log.current_tax || 0);
+        totalNetMax += (log.net_max || 0);
+        totalNetPartial += (log.net_partial || 0);
+      });
+
+      document.getElementById('usage_count').textContent = count;
+      document.getElementById('total_current').textContent = usd(totalCurrent);
+      document.getElementById('total_net_max').textContent = usd(totalNetMax);
+      document.getElementById('total_net_partial').textContent = usd(totalNetPartial);
+      document.getElementById('total_savings_max').textContent = usd(Math.max(0, totalCurrent - totalNetMax));
+      document.getElementById('total_savings_partial').textContent = usd(Math.max(0, totalCurrent - totalNetPartial));
+    }
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      if(usageLogs.length === 0){ alert('No logs to export'); return; }
+
+      const headers = [
+        "Property Type",
+        "Geography",
+        "Input Amount / Market Value",
+        "Current Law Property Tax or Embedded Tax Burden",
+        "Net Property Tax (Maximum Implementation)",
+        "Net Property Tax (Partial Implementation)"
+      ];
+
+      const rows = usageLogs.map(log => [
+        log.property_type,
+        log.geography,
+        (log.market_value ?? ""),
+        (log.current_tax ?? ""),
+        (log.net_max ?? ""),
+        (log.net_partial ?? "")
+      ]);
+
+      const toCSV = (arr) => arr.map(row => row.map(val => {
+        if (typeof val === 'number') return val.toString();
+        const s = String(val);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+      }).join(',')).join('\n');
+
+      const csv = toCSV([headers, ...rows]);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "usage_logs.csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  });
+</script>
+
+<meta name="NetsparkQuiltingResult" total-length="23733" removed="0" rules-found="w2655,w3390,w3012,w2577,w8152,w6784,r973s-30p1,w9360,w3829,w3830,w6284,w8897,w342" />
+
+<meta name="NetsparkQuiltingResult" total-length="27735" removed="0" rules-found="w2655,w3390,w3012,w2577,w6784,r973s-30p1,w9360,w8152,w6284,w3829,w3830,w8897,w8157,w342" />
+</head>
+<body>
+<div class="wrap">
+
+<!-- HOMEOWNER / HOMESTEAD SECTION -->
+<div class="card">
+  <div class="section-title">
+    <h1>Montana Property Tax Burden Estimator</h1>
+<span class="pill">Homeowner (Homestead)</span>
+  </div>
+
+  <p class="sub">
+    Enter your <strong>market value</strong>. Montana property taxes are calculated using a two-step system:
+    (1) apply the <strong>1.35% assessment rate</strong> to market value to determine taxable value, then
+    (2) apply the <strong>mill levy</strong> to taxable value.
+  </p>
+
+  <div class="grid">
+    <div>
+      <label for="geo">Geography</label>
+      <select id="geo" disabled><option value="MT">Montana (Statewide Average)</option></select>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="assessed">Market Value ($)</label>
+          <input id="assessed" min="0" placeholder="e.g., 300000" step="1" type="number"/>
+        </div>
+        <div>
+          <label for="mills">Total Mills, 2025</label>
+          <input disabled id="mills" step="0.1" type="number" value="500"/>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="scenario">Reform Scenario (for sales-tax context)</label>
+          <select id="scenario">
+            <option value="current">Current Law (baseline)</option>
+            <option value="max">Maximum Implementation</option>
+            <option value="partial">Partial Implementation</option>
+          </select>
+        </div>
+        <div>
+          <label> </label>
+          <button class="btn" id="calcBtn">Calculate</button>
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="box">
+          <div class="small muted">Current Estimated Tax (Current Law)</div>
+          <div id="kpi_current" style="font-size:20px;font-weight:800">$0.00</div>
+        </div>
+        <div class="box">
+          <div class="small muted">Effective Rate (as % of Market Value)</div>
+          <div id="kpi_rate" style="font-size:20px;font-weight:800">0.000%</div>
+        </div>
+        <div class="box">
+          <div class="small muted">Mills (2024)</div>
+          <div id="kpi_mills" style="font-size:20px;font-weight:800">500</div>
+        </div>
+      </div>
+
+      <div class="kpi" style="margin-top:10px">
+        <div class="box">
+          <div class="small muted">Assessment Rate</div>
+          <div id="kpi_assessment" style="font-size:20px;font-weight:800">1.35%</div>
+        </div>
+        <div class="box">
+          <div class="small muted">Taxable Value (Market × 1.35%)</div>
+          <div id="kpi_taxable" style="font-size:20px;font-weight:800">$0.00</div>
+        </div>
+        <div class="box">
+          <div class="small muted">Selected Sales Tax (Static / Dynamic)</div>
+          <div style="font-size:14px;font-weight:800">
+            <div><span class="muted">Static:</span> <span id="sales_static">N/A</span></div>
+            <div><span class="muted">Dynamic:</span> <span id="sales_dynamic">N/A</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div>
+      <table>
+        <thead>
+          <tr><th>Output</th><th>Value</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Current Law Property Tax</td><td id="cur">$0.00</td></tr>
+          <tr><td><strong>Maximum Implementation — Net Property Tax</strong></td><td id="net_max">$0.00</td></tr>
+          <tr><td>Savings (Maximum)</td><td id="sav_max">$0.00</td></tr>
+          <tr><td><strong>Partial Implementation — Net Property Tax (Homestead)</strong></td><td id="net_partial">$0.00</td></tr>
+          <tr><td>Savings (Partial)</td><td id="sav_partial">$0.00</td></tr>
+        </tbody>
+      </table>
+
+      <div class="footer">
+        Interpretation:
+        <strong>Maximum Implementation</strong> eliminates state, city, county, and K–12 school district property taxes.
+        <strong>Partial Implementation</strong> eliminates <em>residential homestead</em> property taxes only; business and rental property taxes remain. Net property tax shown excludes special districts and other remaining local fees/taxes not modeled. For comparison, the report models a typical household with a roughly $2,723 property tax bill on a median-valued Montana home.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BUSINESS PROPERTY SECTION -->
+<div class="card">
+  <div class="section-title">
+    <h2>Business Property Estimator — Statewide Average</h2>
+    <span class="pill">Business Property</span>
+  </div>
+
+  <p class="sub">
+    Enter the <strong>market value</strong> of business property. Under the the report’s reform framework, business property taxes are
+    eliminated under <strong>Maximum Implementation</strong>, but generally remain under <strong>Partial Implementation</strong>.
+  </p>
+
+  <div class="grid">
+    <div>
+      <label for="bgeo">Geography</label>
+      <select id="bgeo" disabled><option value="MT">Montana (Statewide Average)</option></select>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="bvalue">Market Value ($)</label>
+          <input id="bvalue" min="0" placeholder="e.g., 300000" step="1" type="number"/>
+        </div>
+        <div>
+          <label for="bmills">Total Mills, 2025</label>
+          <input disabled id="bmills" step="0.1" type="number" value="500"/>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="bscenario">Reform Scenario (for sales-tax context)</label>
+          <select id="bscenario">
+            <option value="current">Current Law (baseline)</option>
+            <option value="max">Maximum Implementation</option>
+            <option value="partial">Partial Implementation</option>
+          </select>
+        </div>
+        <div>
+          <label> </label>
+          <button class="btn" id="calcBizBtn">Calculate</button>
+        </div>
+      </div>
+
+      <div class="kpi" style="margin-top:12px">
+        <div class="box">
+          <div class="small muted">Effective Business Property Tax Rate</div>
+          <div id="b_effective_rate" style="font-size:20px;font-weight:800">1.07%</div>
+        </div>
+        <div class="box">
+          <div class="small muted">Selected Sales Tax (Static / Dynamic)</div>
+          <div style="font-size:14px;font-weight:800">
+            <div><span class="muted">Static:</span> <span id="b_sales_static">N/A</span></div>
+            <div><span class="muted">Dynamic:</span> <span id="b_sales_dynamic">N/A</span></div>
+          </div>
+        </div>
+        <div class="box">
+          <div class="small muted">Mills (2024)</div>
+          <div style="font-size:20px;font-weight:800">500</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <table>
+        <thead><tr><th>Output</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Current Law Property Tax</td><td id="b_cur">$0.00</td></tr>
+          <tr><td><strong>Maximum Implementation — Net Property Tax</strong></td><td id="b_net_max">$0.00</td></tr>
+          <tr><td>Savings (Maximum)</td><td id="b_sav_max">$0.00</td></tr>
+          <tr><td><strong>Partial Implementation — Net Property Tax</strong></td><td id="b_net_partial">$0.00</td></tr>
+          <tr><td>Savings (Partial)</td><td id="b_sav_partial">$0.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- RENTER SECTION -->
+<div class="card">
+  <div class="section-title">
+    <h2>Renter Savings Estimator — Statewide</h2>
+    <span class="pill">Renters</span>
+  </div>
+  <p class="sub">
+    Estimate renter savings from reduced property tax pass-through under Montana property tax reform.
+    Adjust the assumed pass-through rate and reform scenario to see how savings may vary.
+  </p>
+
+  <div class="grid">
+    <div>
+      <label for="annualRent">Annual Rent ($)</label>
+      <input id="annualRent" type="number" placeholder="e.g., 24000" min="0"/>
+
+      <label for="rscenario" style="margin-top:12px;">Reform Scenario</label>
+      <select id="rscenario">
+        <option value="max">Maximum Implementation</option>
+        <option value="partial">Partial Implementation</option>
+      </select>
+
+      <label for="passRate" style="margin-top:12px;">
+        Assumed Property Tax Pass-Through Rate (<span id="passLabel">80%</span>)
+      </label>
+      <input id="passRate" type="range" min="40" max="90" step="1" value="80" />
+
+      <button class="btn" id="calcRenterBtn" style="margin-top:12px;">Calculate Renter Savings</button>
+      <div class="footer" style="margin-top:12px; margin-bottom:18px;">
+        Disclaimer: The calculation of estimated property tax savings for renters in the tool is based on national estimates and not precise to Montana. These figures represent the best estimate of what Montana renters could save depending on the specific pass-through rate selected in the calculator. Embedded property-tax share of rent is set at 20%.
+      </div>
+    </div>
+
+    <div>
+      <table>
+        <thead><tr><th>Output</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Embedded Property-Tax Share of Rent</td><td id="r_embedded_share">20%</td></tr>
+          <tr><td>Assumed Pass-Through Rate</td><td id="r_pass_rate">80%</td></tr>
+          <tr><td>Current Estimated Annual Embedded Burden</td><td id="r_current">$0.00</td></tr>
+          <tr><td><strong>Maximum Implementation — Estimated Renter Savings</strong></td><td id="r_sav_max">$0.00</td></tr>
+          <tr><td><strong>Partial Implementation — Estimated Renter Savings</strong></td><td id="r_sav_partial">$0.00</td></tr>
+          <tr><td><strong>Selected Scenario Savings</strong></td><td id="renterSavings">$0.00</td></tr>
+        </tbody>
+      </table>
+      <div class="footer" id="r_scenario_note" style="margin-top:12px;">
+        Maximum Implementation: modeled rental property tax pass-through is eliminated. Partial Implementation: rental/business property taxes remain.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONSOLIDATED RESULTS TABLE -->
+<div class="card">
+  <div class="section-title">
+    <h2>Results Summary</h2>
+    <span class="pill">Outputs</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:left">Property Type</th>
+        <th style="text-align:left">Geography</th>
+        <th>Input Amount / Market Value</th>
+        <th>Current Law Property Tax or Embedded Tax Burden</th>
+        <th>Net Property Tax (Maximum Implementation)</th>
+        <th>Net Property Tax (Partial Implementation)</th>
+      </tr>
+    </thead>
+    <tbody id="results_body"></tbody>
+  </table>
+</div>
+
+
+
+
+
+
+
+<div class="footer" style="margin-top:20px; font-size:12px; color:#9ca3af;">
+  Disclaimer: This tool uses a statewide average 2024 composite mill levy and a simplified two-step Montana property tax calculation:
+  (1) taxable value equals market value multiplied by the legislatively set assessment rate (1.35%),
+  and (2) property tax equals taxable value multiplied by the mill levy (mills ÷ 1000).
+  Actual assessment practices and local levies vary by location and property class, and results are illustrative.
+  Net property tax results exclude special districts and other remaining local fees or taxes not modeled.
+  Reform scenario sales tax rates shown are informational and reflect the modeling assumptions in <em>Securing Ownership by Eliminating Property Taxes</em>.
+</div>
+
+</div>
+
+
+
+
+
+<!-- AGGREGATE USAGE DASHBOARD + EXPORT -->
+<div class="card">
+  <div class="section-title">
+    <h2>Session Summary and Export</h2>
+    <span class="pill">Admin View</span>
+  </div>
+  <p class="sub">Tracks total usage and estimated tax liabilities across all tool interactions (session-based).</p>
+
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Total Users (actions logged)</td><td id="usage_count">0</td></tr>
+      <tr><td>Total Current Law Property Tax</td><td id="total_current">$0.00</td></tr>
+      <tr><td>Total Net Property Tax (Maximum)</td><td id="total_net_max">$0.00</td></tr>
+      <tr><td>Total Net Property Tax (Partial)</td><td id="total_net_partial">$0.00</td></tr>
+      <tr><td>Total Savings vs Current (Maximum)</td><td id="total_savings_max">$0.00</td></tr>
+      <tr><td>Total Savings vs Current (Partial)</td><td id="total_savings_partial">$0.00</td></tr>
+    </tbody>
+  </table>
+
+  <button class="btn" id="exportBtn">Export Logs as CSV</button>
+</div>
+
+</body>
+</html>
+
